@@ -1,0 +1,78 @@
+var config = require('./config');
+var net = require('net');
+
+
+var server = net.createServer();
+
+var clients = [];
+
+server.on('connection', handleConnection);
+
+server.listen(config.eventListenPort, function() {
+    console.log('server listening to %j', server.address());
+});
+
+function handleConnection(conn) {
+    var remoteAddress = conn.remoteAddress + ':' + conn.remotePort;
+    console.log('new client connection from %s', remoteAddress);
+    clients.push(conn);
+
+    conn.on('data', onConnData);
+    conn.once('close', onConnClose);
+    conn.on('error', onConnError);
+
+    function onConnData(d) {
+        console.log('connection data from %s: %j', remoteAddress, d);
+        conn.write(d);
+    }
+
+    function onConnClose() {
+        console.log('connection from %s closed', remoteAddress);
+    }
+
+    function onConnError(err) {
+        console.log('Connection %s error: %s', remoteAddress, err.message);
+    }
+}
+
+const express = require('express');
+const app = express();
+
+app.get('/packet', function (request, response) {
+    var eventType = request.param('type');
+    var alarmNo = request.param('no');
+    var eventMessage = request.param('event');
+
+    var xmlString = '<?xml version="1.0" encoding="UTF-8"?><Packet ID="527"><Signal EvType="SIA"><AlarmNo>234516</AlarmNo><Event>#123456|Nti03:42/da03-09-03/BA1017|AINTRUDER</Event></Signal></Packet>';
+
+    broadcastToAllClients(xmlString);
+
+    response.send('Ok');
+});
+
+app.get('/heartbeat', function (request, response) {
+    var eventType = request.param('type');
+    var alarmNo = request.param('no');
+    var eventMessage = request.param('event');
+
+    var xmlString = '<?xml version="1.0" encoding="UTF-8"?><Heartbeat/>';
+
+    broadcastToAllClients(xmlString);
+
+    response.send('Ok');
+});
+
+app.listen(config.webListenPort, function (err) {
+    if (err) {
+        return console.log('something bad happened', err)
+    }
+
+    console.log('server is listening on ${port}');
+});
+
+function broadcastToAllClients(message) {
+    console.log("Broadcasting message to all connected clients");
+    clients.forEach(function(client) {
+        client.write(message);
+    });
+}
